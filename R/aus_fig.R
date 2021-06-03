@@ -269,6 +269,12 @@ braz_n <- braz %>%
   dplyr::select(datetime = acq_datetime, variable, value,lty, label_y) %>%
   st_set_geometry(NULL)
 
+brazil_goes  <- read_csv("data/brazil_goes_counts.csv") %>%
+  dplyr::mutate(variable = "Detections",
+                lty = 0,
+                label_y = max(n)*0.85)%>%
+  dplyr::select(datetime = rounded_datetime, variable, value = n, lty, label_y)
+
 braz_clim <- read_csv("data/brazil2019vpd.csv") %>%
   dplyr::rename(value = `vpd(hPa)`)%>% 
   mutate(value = value/10,
@@ -284,7 +290,7 @@ braz_clim <- read_csv("data/brazil2019vpd.csv") %>%
   filter(date > as.Date("2019-07-28"),
          date < as.Date("2019-08-18"))%>%
   dplyr::select(datetime, variable, value,lty, label_y) %>%
-  rbind(braz_n)
+  rbind(brazil_goes)
 
 
 
