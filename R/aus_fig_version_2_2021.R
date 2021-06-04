@@ -18,7 +18,7 @@ getmode <- function(v) {
   uniqv <- unique(v)
   uniqv[which.max(tabulate(match(v, uniqv)))]
 }
-# thesholds ====================================================================
+# thresholds ====================================================================
 thresholds<-read_csv("data/updated-goes-af-vpd-thresholds.csv")
 # thresholds[1:20,]
 
@@ -187,7 +187,7 @@ snowy_clim <- read_csv("data/snowyave.csv",col_names = F) %>%
   dplyr::select(datetime, variable, value,lty, label_y,daynight, lty_main) %>%
   rbind(snowy_n)
 
-lc <- snowy %>%
+lc_s <- snowy_modis %>%
   mutate(lc=raster::extract(x=raster(snowy_lc_file), y=.)) %>%
   mutate(lc_name = lut_lc[lc]) %>%
   group_by(lc_name) %>%
@@ -195,7 +195,7 @@ lc <- snowy %>%
   ungroup() %>%
   st_set_geometry(NULL)
 
-stats <- snowy %>%
+stats_s <- snowy_modis %>%
   st_set_geometry(NULL) %>%
   group_by(daynight) %>%
   summarise(percent_dn = round((n()/nrow(.))*100,2)) %>%
@@ -377,7 +377,7 @@ braz_clim <- read_csv("data/brazil2019vpd.csv") %>%
   dplyr::select(datetime, variable, value,lty, label_y) %>%
   rbind(brazil_goes)
 
-lc <- brazil_viirs %>%
+lc_b <- brazil_modis %>%
   mutate(lc=raster::extract(x=raster(braz_lc_file), y=.)) %>%
   mutate(lc_name = lut_lc[lc]) %>%
   group_by(lc_name) %>%
@@ -385,7 +385,7 @@ lc <- brazil_viirs %>%
   ungroup() %>%
   st_set_geometry(NULL)
 
-stats <- brazil_viirs %>%
+stats_b <- brazil_modis %>%
   st_set_geometry(NULL) %>%
   group_by(daynight) %>%
   summarise(percent_dn = round((n()/nrow(.))*100,2)) %>%
@@ -542,7 +542,7 @@ lct <- tubbs %>%
   ungroup() %>%
   st_set_geometry(NULL)
 
-statst <- tubbs %>%
+statst <- tubbs_modis %>%
   st_set_geometry(NULL) %>%
   group_by(daynight) %>%
   summarise(percent_dn = round((n()/nrow(.))*100,2)) %>%
@@ -644,7 +644,7 @@ inset_t <- read_csv("data/tubbs-hourly.csv") %>%
           # strip.background = element_blank(),
           # strip.text = element_blank(),
           axis.title = element_blank(),
-          axis.ticks = element_blank());inset_t
+          axis.ticks = element_blank())
 
 locator_plot_t <- ggplot(usa) +  
   theme(panel.border = element_rect(color="black", fill=NA),
