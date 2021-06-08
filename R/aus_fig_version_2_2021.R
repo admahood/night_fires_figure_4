@@ -11,7 +11,7 @@ library(ggpubr)
 library(scales)
 library(lubridate)
 library(cowplot)
-
+library(ggmap)
 theme_set(theme_void())
 
 getmode <- function(v) {
@@ -99,6 +99,7 @@ snowy <- st_read("data/snowy_complex.gpkg") %>%
   filter(acq_date > as.Date("2019-12-28"),
          acq_date < as.Date("2020-01-6"))
 daterange_s <- snowy$acq_date %>% as.Date() %>% range()
+bbox <- st_bbox(snowy)%>% as.numeric()
 
 snowy_modis <- read_csv("data/snowy_modis_afd.csv")%>%
   dplyr::mutate(acq_hour = as.numeric(substr(acq_time, start = 1, stop = 2)),
@@ -210,7 +211,6 @@ snowy_area <- st_read("~/data/background/world_borders/ne_50m_admin_0_countries.
 australia <- st_read("~/data/background/world_borders/ne_50m_admin_0_countries.shp") %>%
   filter(NAME_EN == "Australia") 
 
-bbox <- st_bbox(snowy)%>% as.numeric()
 
 if(!file.exists("data/fishnet.RDS")){
   fishnet <- st_bbox(snowy)%>% 
@@ -242,11 +242,85 @@ if(!file.exists("data/fishnet_lc.RDS")){
 
 locator_box <- st_bbox(snowy) %>% st_as_sfc()
 
+
+ls_snow<-list.files("data/landsat_snowy/may7", full.names = TRUE) %>%
+  as_tibble()%>%
+  filter(str_detect(value,c("B[234]"))) %>%
+  pull(value) %>%
+  terra::rast() %>%
+  terra::aggregate(10)
+
+names(ls_snow)<- c("b", "g", "r")
+snowy_area_rast<- st_crs(ls_snow)
+
+# removing extreme values
+# ls_snow[ls_snow<5000] <-NA
+# ls_snow[ls_snow>20000] <-NA
+library(MODIS)
+
+filenames<-MODIS::getSds("data/modis_snowy/MOD09A1.A2020049.h29v12.006.2020058053841.hdf")
+
+# rgb 143
+# r=1, g=4, b=3
+
+hdf<-terra::rast("data/modis_snowy/MOD09A1.A2020049.h29v12.006.2020058053841.hdf")
+
+library(stars)
+
+st_hdf<-st_as_stars(hdf)
+
+hdf_t <- st_transform(st_hdf, st_crs(snowy_area))
+
+plot(hdf_t)
+
+names(hdf) <- filenames$SDSnames
+snowy_area_rast<- st_crs(hdf)
+r_bbox <- snowy%>%
+  st_transform(crs=snowy_area_rast)%>%
+  st_bbox()%>% as.numeric()
+
+
+RStoolbox::ggRGB(as(hdf#%>%terra::stretch(0,255)
+                    , "Raster"),
+                 r=1,g=4,b=3,
+                 stretch = "lin") +
+  # geom_sf(data = st_transform(snowy_area, crs=snowy_area_rast),
+  #         fill = "transparent") +
+  geom_sf(data = st_transform(snowy_modis, crs = snowy_area_rast), 
+          aes(color=daynight), show.legend = "point")  +
+  scale_fill_manual(values = lut_colors,
+                    name = "Land Cover")+
+  scale_alpha_manual(values = c(0.5,0.15))+
+  scale_color_manual(values = daynight_cols)+
+  ggsn::scalebar(data = snowy, location = "topleft", model = "WGS84",
+                 dist = 30, dist_unit = "km",transform = TRUE,st.dist = 0.05) +
+  guides(fill = FALSE)+
+  xlim(c(r_bbox[c(1,3)])) +
+  ylim(c(r_bbox[c(2,4)])) +
+  ggtitle(paste("A. Snowy Complex. December 29, 2019 - January 5, 2020")) +
+  theme(legend.position ="none",
+        # legend.justification = c(0.95,0),
+        # legend.title = element_blank(),
+        panel.border = element_rect(color="black", fill=NA))
+                          
+
+ls_snow_rgb <- ls_snow %>%
+  as.data.frame(xy=TRUE)%>%
+  na.omit 
+
+
+
+ggplot(ls_snow_rgb,aes(x=b)) +
+  geom_histogram(stat="count")
+
+testplot<-ggplot(ls_snow_rgb,aes(x=x,y=y,fill=dnbr))+
+  geom_tile() +
+  ggsave("testplot.png")
+
+RStoolbox::ggRGB(as(ls_snow, "Raster"))
+
 # snowy plots ==================================================================
 main_plot_s <- ggplot() +
-  geom_sf(data = fishnet_lc, 
-          aes(fill=classes),
-          color = "transparent", alpha = 0.5)+
   geom_sf(data = snowy_area, fill = "transparent")+
   geom_sf(data = snowy_modis, 
           aes(color=daynight), show.legend = "point") +
