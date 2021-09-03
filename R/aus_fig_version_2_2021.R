@@ -11,6 +11,8 @@ library(stars)
 library(ggpubr)
 library(scales)
 library(basemaps)
+library(ggnewscale)
+library(ggthemes)
 library(lubridate)
 library(cowplot)
 library(ggmap)
@@ -20,6 +22,8 @@ getmode <- function(v) {
   uniqv <- unique(v)
   uniqv[which.max(tabulate(match(v, uniqv)))]
 }
+
+shade_cols<-c("#f0dbdb","#c0e9f6") # first pink, then skyblue
 # thresholds ====================================================================
 thresholds<-read_csv("data/updated-goes-af-vpd-thresholds.csv")
 # thresholds[1:20,]
@@ -276,10 +280,9 @@ if(!file.exists("data/fishnet_lc.RDS")){
   }
 
 
-locator_box <- st_bbox(snowy) %>% st_as_sfc()
+locator_box <- st_bbox(snowy_modis) %>% st_as_sfc()
 
 # snowy plots ==================================================================
-# basemap_gglayer(snowy_area)->pp
 
 main_plot_s <- ggplot() +
   geom_sf(data = fishnet_lc, 
@@ -287,19 +290,16 @@ main_plot_s <- ggplot() +
           alpha=0.5,
           color = "transparent")+
   scale_fill_manual(values = lut_colors_simple, name = "Landcover Classes")+
-  geom_sf(data = snowy_modis,# %>% st_transform(crs=crsss), 
+  geom_sf(data = snowy_modis, 
           aes(color=daynight), show.legend = "point") +
   scale_color_manual(values = daynight_cols)+
-  # ggsn::scalebar(data = snowy_modis,#%>% st_transform(crs=crsss),
-  #                location = "topleft", model = "WGS84",
-  #                dist = 30, dist_unit = "km",transform = TRUE,st.dist = 0.05) +
   xlim(c(bbox_s[c(1,3)])) +
-  ylim(c(bbox_s[c(2,4)])) +
+  ylim(c(bbox_s[c(2,4)])) + 
+  ggsn::scalebar(data = snowy, location = "topleft", model = "WGS84",
+                 dist = 30, dist_unit = "km",transform = TRUE,st.dist = 0.05) +
   ggtitle(paste("a. Snowy Complex. December 29, 2019 - January 5, 2020")) +
-  theme(legend.position ="none",
-        plot.title = element_text(face = "bold"),
-        panel.spacing = unit(0, "cm"),
-        plot.margin = grid::unit(c(0,0,0,0), "mm"),
+  guides(fill=FALSE, color=FALSE)+
+  theme(plot.title = element_text(face = "bold"),
         panel.border = element_rect(color="black", fill=NA))
 
 locator_plot_s <- ggplot(australia) +  
@@ -310,21 +310,29 @@ locator_plot_s <- ggplot(australia) +
   ylim(c(-43, -11))+
   xlim(c(114,153))
 
-inset_s <- ggplot(snowy_clim %>% filter(variable == "VPD (kPa)"), aes(x=datetime, y=value)) +
+inset_s <- ggplot(snowy_clim %>% 
+                    filter(variable == "VPD (kPa)"), 
+                  aes(x=datetime, y=value)) +
+  geom_bar(stat = "identity", aes(fill = daynight,color = daynight,y=5), show.legend=F) +
+  scale_fill_manual(values = shade_cols)+
+  new_scale("fill")+
+  scale_color_manual(values = shade_cols)+
+  new_scale("color")+
   geom_line(color = "grey30") +
   geom_bar(data = snowy_modis_detections,stat = "identity", width = 20000,
            aes(x=date, y=value, fill=daynight))+
-  geom_abline(aes(slope = 0,intercept = 0.794), lty=2)+
+  geom_abline(aes(slope = 0,intercept = 0.6), lty=2)+
   scale_linetype_manual(values = c(0,2))+
-  scale_y_continuous(position = "right", labels = label_number_si())+
-  scale_x_datetime(date_breaks = "1 week", date_labels = "%b %d")+
+  scale_y_continuous(position = "right", labels = label_number_si(), expand = c(0.01, 0.01))+
+  scale_x_datetime(date_breaks = "1 week", date_labels = "%b %d", expand = c(0.01, 0.01))+
   facet_wrap(~variable, scales = "free_y", 
              nrow = 2, strip.position = "left"
              ) +
   scale_fill_manual(values = daynight_cols)+
   xlab("Date") +
-  theme_bw() +
+  theme_classic() +
   theme(legend.position = "none",
+        panel.background = element_rect(fill = "transparent", color = "black", size=1),
         # strip.background = element_blank(),
         # strip.text = element_blank(),
         axis.title = element_blank(),
@@ -332,7 +340,7 @@ inset_s <- ggplot(snowy_clim %>% filter(variable == "VPD (kPa)"), aes(x=datetime
 
 snowy_cow <- ggdraw() +
   draw_plot(main_plot_s) +
-  draw_plot(locator_plot_s, x=0.823,y=.62,width=.2,height=.2)
+  draw_plot(locator_plot_s, x=0.8337,y=.675,width=.2,height=.2)
 #
 # tubbs ==========================================================
 
@@ -438,7 +446,7 @@ main_plot_t <- ggplot() +
           aes(fill=lut_lc_simple[classes]),
           alpha = 0.5, 
           color = "transparent")+
-  geom_sf(data = tubbs_area, fill = "transparent")+
+  # geom_sf(data = tubbs_area, fill = "transparent", color = "transparent")+
   geom_sf(data = tubbs_fired_p, fill = "transparent",lwd=1) +
   geom_sf(data = tubbs_modis, 
           aes(color=daynight), size=6,show.legend = "point") +
@@ -457,35 +465,66 @@ main_plot_t <- ggplot() +
         legend.title = element_blank(),
         panel.border = element_rect(color="black", fill=NA))
 
-inset_t <- read_csv("data/tubbs-hourly.csv") %>% 
+inset_t_data <- read_csv("data/tubbs-hourly.csv") %>% 
   mutate(lty = ifelse(name == "VPD (kPa)",2,0),
          name = str_replace_all(name, "Active Fire detections", "Detections")) %>%
   group_by(name) %>%
   mutate(label_y = max(value)*0.85,
          daynight = NA,
-         lty_main = 1) %>%
+         lty_main = 1,
+         shade_y = max(value)) %>%
   ungroup()%>%
-  dplyr::select(-fire_name, -id)%>%
-  rbind(tubbs_modis_detections %>% mutate(lty_main = 0)) %>%
+  dplyr::mutate(latitude = 38,
+                longitude = -122,
+                acq_hour = hour(datetime_utc),
+                acq_min = lubridate::minute(datetime_utc),
+                acq_datetime = datetime_utc,
+                acq_year = year(acq_datetime),
+                acq_month = month(acq_datetime),
+                acq_day = day(acq_datetime),
+                solar_offset = longitude / 15,
+                hemisphere = ifelse(latitude >= 0, yes = "Northern hemisphere", no = "Southern hemisphere"),
+                acq_datetime_local = acq_datetime + as.duration(solar_offset * 60 * 60),
+                local_doy = lubridate::yday(acq_datetime_local),
+                local_hour_decmin = ((acq_hour) + (acq_min / 60) + solar_offset + 24) %% 24,
+                local_solar_hour_decmin_round = round(local_hour_decmin),
+                local_solar_hour_decmin_round0.5 = round(local_hour_decmin * 2) / 2,
+                h = (local_hour_decmin - 12) * 15 * pi / 180,
+                phi = latitude * pi / 180,
+                delta = -asin(0.39779 * cos(pi / 180 * (0.98565 * (local_doy + 10) + 360 / pi * 0.0167 * sin(pi / 180 * (0.98565 * (local_doy - 2)))))),
+                solar_elev_ang = (asin(sin(phi)*sin(delta) + cos(phi)*cos(delta)*cos(h))) * 180 / pi,
+                daynight = ifelse(solar_elev_ang > 0, yes = "day", no = "night")) %>%
+  dplyr::select(datetime_utc, name, value, lty, label_y, daynight, lty_main, shade_y)%>%
+  rbind(tubbs_modis_detections %>% mutate(lty_main = 0, shade_y=0)) %>%
   filter(datetime_utc > as.Date("2017-10-08") &
-           datetime_utc < as.Date("2017-10-17"))%>%
-  ggplot(aes(x=datetime_utc, y=value)) +
+           datetime_utc < as.Date("2017-10-17"))
+
+inset_t<- ggplot(inset_t_data, aes(x=datetime_utc, y=value)) +
+  geom_bar(stat = "identity", aes(fill = daynight,y=shade_y, color = daynight),
+           show.legend=F) +
+  scale_fill_manual(values = shade_cols)+
+  scale_color_manual(values = shade_cols)+
+  new_scale("fill")+
+  new_scale("color")+
     geom_line(color = "grey30", aes(lty = as.factor(lty_main))) +
     geom_bar(data = tubbs_modis_detections,
              stat="identity",width = 25000,
              aes(y = value, fill=daynight), 
              color = "transparent")+
     xlab("Date") +
-    scale_x_datetime(date_breaks = "1 week", date_labels = "%b %d")+
-    geom_hline(aes(yintercept = 0.794, lty=as.factor(lty)))+
+    scale_x_datetime(date_breaks = "1 week", date_labels = "%b %d", expand = c(0.01, 0.01) )+
+    geom_hline(aes(yintercept = 1, lty=as.factor(lty)))+
     scale_y_continuous(position = "right", 
-                       labels = label_number_si())+
+                       labels = label_number_si(), expand = c(0.01, 0.01))+
     scale_linetype_manual(values=c(0,1,2)) +
-    scale_fill_manual(values =daynight_cols)+
+    scale_fill_manual(values =daynight_cols,)+
     facet_wrap(~name, ncol = 1, scales = "free_y", 
                nrow = 3, strip.position = "left") +
-    theme_bw() +
+    theme_classic() +
     theme(legend.position = "none",
+          panel.background = element_rect(color = "black", 
+                                          fill = "transparent",
+                                          size = 1),
           # strip.background = element_blank(),
           # strip.text = element_blank(),
           axis.title = element_blank(),
@@ -502,7 +541,7 @@ tubbs_cow<-ggdraw() +
   draw_plot(locator_plot_t, .75,.10,.2,.2)
 
 
-# full plot without brazil =====================================================
+# insets and legends =====================================================
 leg_dn <- get_legend(ggplot()+
                     geom_bar(data = snowy_n,stat = "identity", width = 20000,
                              aes(x=datetime, y=value, fill=daynight))+
@@ -533,12 +572,14 @@ insets_ts <- ggarrange(inset_t, insets_ls,
                        label.x = c(.85, .39), 
                        label.y = .97, hjust="right", vjust="top")
 
-finalfig <- ggdraw(xlim = c(0, 10), ylim = c(0, 9.25)) +
+# final plot ====================
+finalfig <- ggdraw(xlim = c(0, 11), ylim = c(0,9.25)) +
   draw_plot(snowy_cow, x = 0, y = 4.7, width =7.75, height = 4.75) +
-  draw_plot(inset_s, x = 7.75, y= 4.79, width = 2.25, height = 3.75) +
-  
+  draw_plot(inset_s, x = 7.75, y= 4.79, width = 3.25, height = 3.75) +
   draw_plot(tubbs_cow, x = 0, y = 0.265, width = 3, height = 4.75) +
-  draw_plot(inset_t, x = 3, y = 0, width = 2.25, height = 4.85)+
-  draw_plot(leg_dn, x=5.4, y=2)+
-  draw_plot(leg_lc,x=5.5, y=3, width = 2, height = 2) +
-  ggsave("images/panel_fig_no_braz.png", height = 9.25, width =10)
+  draw_plot(inset_t, x = 3, y = 0, width = 3, height = 4.85)+
+  draw_plot(leg_dn, x=6.1, y=2)+
+  draw_plot(leg_lc,x=6.25, y=3, width = 2, height = 2)
+
+ggsave(finalfig, filename = "images/Fig4_case_studies.png",bg = "white",
+       height = 9.25, width =11)
